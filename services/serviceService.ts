@@ -6,8 +6,13 @@ export interface Service {
   name: string;
   description: string;
   price: number;
-  duration: number; // in minutes
+  durationMinutes: number;
   category: string;
+  address: string;
+  phone: string;
+  rating?: number;
+  distance?: number;
+  veterinarianId?: string;
   createdAt: string;
   updatedAt: string;
 }

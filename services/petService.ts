@@ -21,6 +21,7 @@ export interface CreatePetData {
   species: string;
   breed: string;
   age: number;
+  birthdate: string;
   gender: string;
   weight?: number;
   color?: string;

@@ -4,8 +4,8 @@ import Input from "@/components/ui/Input";
 import { theme } from "@/constants/theme";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { Calendar, Clock, MapPin, Stethoscope } from "lucide-react-native";
-import React, { useState } from "react";
+import { Calendar, Clock, MapPin, Building2 } from "lucide-react-native";
+import React, { useState, useEffect } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -14,55 +14,153 @@ import {
   Text,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-
-// Mock data
-const pets = [
-  { id: "1", name: "Max", breed: "Golden Retriever" },
-  { id: "2", name: "Luna", breed: "Persian Cat" },
-  { id: "3", name: "Charlie", breed: "Beagle" },
-];
-
-const clinics = [
-  { id: "1", name: "VetCare Clinic", address: "123 Main St, City" },
-  { id: "2", name: "Animal Hospital", address: "456 Oak Ave, City" },
-  { id: "3", name: "Pet Wellness Center", address: "789 Pine Rd, City" },
-];
-
-const appointmentTypes = [
-  "Consultation",
-  "Vaccination",
-  "Check-up",
-  "Grooming",
-  "Emergency",
-  "Surgery",
-];
+import { petService, Pet } from "@/services/petService";
+import { appointmentService } from "@/services/appointmentService";
+import { serviceService, Service } from "@/services/serviceService";
+import DateTimePicker, {
+  DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 
 export default function BookAppointmentScreen() {
+  const [pets, setPets] = useState<Pet[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [petsLoading, setPetsLoading] = useState(true);
+  const [servicesLoading, setServicesLoading] = useState(true);
   const [selectedPet, setSelectedPet] = useState<string>("");
-  const [selectedClinic, setSelectedClinic] = useState<string>("");
-  const [selectedType, setSelectedType] = useState<string>("");
-  const [date, setDate] = useState<string>("");
-  const [time, setTime] = useState<string>("");
+  const [selectedService, setSelectedService] = useState<string>("");
+  const [selectedDateTime, setSelectedDateTime] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [notes, setNotes] = useState<string>("");
+  const [booking, setBooking] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setPetsLoading(true);
+        setServicesLoading(true);
+
+        // Fetch pets and services in parallel
+        const [petsData, servicesData] = await Promise.all([
+          petService.getAllPets(),
+          serviceService.getAllServices(),
+        ]);
+
+        setPets(petsData);
+        setServices(servicesData);
+      } catch (error) {
+        console.error("Error fetching data:", error);
+        setErrors((prev) => ({
+          ...prev,
+          pets: "Failed to load pets and services",
+        }));
+      } finally {
+        setPetsLoading(false);
+        setServicesLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  const handleDateChange = (
+    _event: DateTimePickerEvent,
+    selectedDate?: Date
+  ) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      // Combine with existing time if it exists, or set to start of day
+      const currentDateTime = selectedDateTime || new Date();
+      const newDateTime = new Date(
+        selectedDate.getFullYear(),
+        selectedDate.getMonth(),
+        selectedDate.getDate(),
+        currentDateTime.getHours(),
+        currentDateTime.getMinutes()
+      );
+      setSelectedDateTime(newDateTime);
+      setErrors((prev) => ({ ...prev, date: "" }));
+    }
+  };
+
+  const handleTimeChange = (
+    _event: DateTimePickerEvent,
+    selectedTime?: Date
+  ) => {
+    setShowTimePicker(false);
+    if (selectedTime) {
+      // Combine with existing date if it exists, or use today
+      const currentDateTime = selectedDateTime || new Date();
+      const newDateTime = new Date(
+        currentDateTime.getFullYear(),
+        currentDateTime.getMonth(),
+        currentDateTime.getDate(),
+        selectedTime.getHours(),
+        selectedTime.getMinutes()
+      );
+      setSelectedDateTime(newDateTime);
+      setErrors((prev) => ({ ...prev, time: "" }));
+    }
+  };
+
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
     if (!selectedPet) newErrors.pet = "Please select a pet";
-    if (!selectedClinic) newErrors.clinic = "Please select a clinic";
-    if (!selectedType) newErrors.type = "Please select appointment type";
-    if (!date) newErrors.date = "Please select a date";
-    if (!time) newErrors.time = "Please select a time";
+    if (!selectedService) newErrors.service = "Please select a service";
+    if (!selectedDateTime) newErrors.date = "Please select a date and time";
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleBook = () => {
-    if (validate()) {
-      // Navigate back to appointments list
+  const handleBook = async () => {
+    if (!validate()) return;
+
+    const selectedServiceData = services.find((s) => s._id === selectedService);
+    if (!selectedServiceData) {
+      setErrors((prev) => ({ ...prev, service: "Invalid service selected" }));
+      return;
+    }
+
+    try {
+      setBooking(true);
+      await appointmentService.createAppointment({
+        petId: selectedPet,
+        serviceId: selectedService,
+        clinicName: selectedServiceData.name,
+        clinicAddress: selectedServiceData.address,
+        appointmentType: selectedServiceData.category,
+        dateTime: selectedDateTime!.toISOString(),
+        notes: notes || undefined,
+      });
       router.back();
+    } catch (error) {
+      console.error("Error booking appointment:", error);
+      setErrors((prev) => ({
+        ...prev,
+        form: "Unable to book appointment right now. Please try again.",
+      }));
+    } finally {
+      setBooking(false);
     }
   };
 
@@ -88,130 +186,229 @@ export default function BookAppointmentScreen() {
           {/* Select Pet */}
           <Card style={styles.section}>
             <Text style={styles.sectionTitle}>Select Pet</Text>
-            <View style={styles.optionsContainer}>
-              {pets.map((pet) => (
-                <TouchableOpacity
-                  key={pet.id}
-                  style={[
-                    styles.option,
-                    selectedPet === pet.id && styles.optionActive,
-                  ]}
-                  onPress={() => setSelectedPet(pet.id)}
-                >
-                  <View style={styles.optionContent}>
-                    <Text
-                      style={[
-                        styles.optionText,
-                        selectedPet === pet.id && styles.optionTextActive,
-                      ]}
-                    >
-                      {pet.name}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.optionSubtext,
-                        selectedPet === pet.id && styles.optionSubtextActive,
-                      ]}
-                    >
-                      {pet.breed}
+            {petsLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={theme.colors.primary} />
+                <Text style={styles.loadingText}>Loading your pets...</Text>
+              </View>
+            ) : (
+              <View style={styles.optionsContainer}>
+                {pets.length === 0 ? (
+                  <View style={styles.emptyContainer}>
+                    <Text style={styles.emptyText}>No pets found</Text>
+                    <Text style={styles.emptySubtext}>
+                      Add a pet first to book appointments
                     </Text>
                   </View>
-                  {selectedPet === pet.id && (
-                    <Ionicons
-                      name="checkmark-circle"
-                      size={24}
-                      color={theme.colors.primary}
-                    />
-                  )}
-                </TouchableOpacity>
-              ))}
-            </View>
-            {errors.pet && <Text style={styles.errorText}>{errors.pet}</Text>}
-          </Card>
-
-          {/* Select Clinic */}
-          <Card style={styles.section}>
-            <Text style={styles.sectionTitle}>Select Clinic</Text>
-            <View style={styles.optionsContainer}>
-              {clinics.map((clinic) => (
-                <TouchableOpacity
-                  key={clinic.id}
-                  style={[
-                    styles.option,
-                    selectedClinic === clinic.id && styles.optionActive,
-                  ]}
-                  onPress={() => setSelectedClinic(clinic.id)}
-                >
-                  <View style={styles.optionContent}>
-                    <Text
+                ) : (
+                  pets.map((pet) => (
+                    <TouchableOpacity
+                      key={pet._id}
                       style={[
-                        styles.optionText,
-                        selectedClinic === clinic.id && styles.optionTextActive,
+                        styles.option,
+                        selectedPet === pet._id && styles.optionActive,
                       ]}
+                      onPress={() => setSelectedPet(pet._id)}
                     >
-                      {clinic.name}
-                    </Text>
-                    <View style={styles.optionRow}>
-                      <MapPin size={14} color={theme.colors.textSecondary} />
-                      <Text
-                        style={[
-                          styles.optionSubtext,
-                          selectedClinic === clinic.id &&
-                            styles.optionSubtextActive,
-                        ]}
-                      >
-                        {clinic.address}
-                      </Text>
-                    </View>
-                  </View>
-                  {selectedClinic === clinic.id && (
-                    <Ionicons
-                      name="checkmark-circle"
-                      size={24}
-                      color={theme.colors.primary}
-                    />
-                  )}
-                </TouchableOpacity>
-              ))}
-            </View>
-            {errors.clinic && (
-              <Text style={styles.errorText}>{errors.clinic}</Text>
+                      <View style={styles.optionContent}>
+                        <Text
+                          style={[
+                            styles.optionText,
+                            selectedPet === pet._id && styles.optionTextActive,
+                          ]}
+                        >
+                          {pet.name}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.optionSubtext,
+                            selectedPet === pet._id &&
+                              styles.optionSubtextActive,
+                          ]}
+                        >
+                          {pet.breed} • {pet.age}{" "}
+                          {pet.age === 1 ? "year" : "years"} old
+                        </Text>
+                      </View>
+                      {selectedPet === pet._id && (
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={24}
+                          color={theme.colors.primary}
+                        />
+                      )}
+                    </TouchableOpacity>
+                  ))
+                )}
+              </View>
             )}
+            {errors.pet && <Text style={styles.errorText}>{errors.pet}</Text>}
+            {errors.pets && <Text style={styles.errorText}>{errors.pets}</Text>}
           </Card>
 
-          {/* Appointment Type */}
+          {/* Select Service */}
           <Card style={styles.section}>
-            <Text style={styles.sectionTitle}>Appointment Type</Text>
-            <View style={styles.typeContainer}>
-              {appointmentTypes.map((type) => (
-                <TouchableOpacity
-                  key={type}
-                  style={[
-                    styles.typeChip,
-                    selectedType === type && styles.typeChipActive,
-                  ]}
-                  onPress={() => setSelectedType(type)}
-                >
-                  <Stethoscope
-                    size={16}
-                    color={
-                      selectedType === type
-                        ? theme.colors.white
-                        : theme.colors.primary
-                    }
-                  />
-                  <Text
-                    style={[
-                      styles.typeChipText,
-                      selectedType === type && styles.typeChipTextActive,
-                    ]}
-                  >
-                    {type}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            {errors.type && <Text style={styles.errorText}>{errors.type}</Text>}
+            <Text style={styles.sectionTitle}>Select Service</Text>
+            {servicesLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={theme.colors.primary} />
+                <Text style={styles.loadingText}>Loading services...</Text>
+              </View>
+            ) : (
+              <View style={styles.optionsContainer}>
+                {services.length === 0 ? (
+                  <View style={styles.emptyContainer}>
+                    <Text style={styles.emptyText}>No services available</Text>
+                    <Text style={styles.emptySubtext}>
+                      Please check back later or contact support
+                    </Text>
+                  </View>
+                ) : (
+                  services.map((service) => (
+                    <TouchableOpacity
+                      key={service._id}
+                      style={[
+                        styles.serviceCard,
+                        selectedService === service._id &&
+                          styles.serviceCardActive,
+                      ]}
+                      onPress={() => setSelectedService(service._id)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.serviceCardContent}>
+                        {/* Service Header with Icon and Info */}
+                        <View style={styles.serviceCardHeader}>
+                          <View style={styles.serviceIcon}>
+                            <Building2
+                              size={24}
+                              color={
+                                selectedService === service._id
+                                  ? theme.colors.primary
+                                  : theme.colors.textSecondary
+                              }
+                            />
+                          </View>
+                          <View style={styles.serviceCardInfo}>
+                            <Text
+                              style={[
+                                styles.serviceCardName,
+                                selectedService === service._id &&
+                                  styles.serviceCardNameActive,
+                              ]}
+                            >
+                              {service.name}
+                            </Text>
+                            <View style={styles.serviceCardCategory}>
+                              <Text
+                                style={[
+                                  styles.serviceCardCategoryText,
+                                  selectedService === service._id &&
+                                    styles.serviceCardCategoryTextActive,
+                                ]}
+                              >
+                                {service.category.charAt(0).toUpperCase() +
+                                  service.category.slice(1)}
+                              </Text>
+                            </View>
+                          </View>
+                          {selectedService === service._id && (
+                            <View style={styles.selectionIndicator}>
+                              <Ionicons
+                                name="checkmark-circle"
+                                size={24}
+                                color={theme.colors.primary}
+                              />
+                            </View>
+                          )}
+                        </View>
+
+                        {/* Service Description */}
+                        <Text
+                          style={[
+                            styles.serviceCardDescription,
+                            selectedService === service._id &&
+                              styles.serviceCardDescriptionActive,
+                          ]}
+                          numberOfLines={2}
+                        >
+                          {service.description}
+                        </Text>
+
+                        {/* Service Meta Information */}
+                        <View style={styles.serviceCardMeta}>
+                          <View style={styles.serviceCardMetaItem}>
+                            <Ionicons
+                              name="time-outline"
+                              size={16}
+                              color={
+                                selectedService === service._id
+                                  ? theme.colors.primary
+                                  : theme.colors.textSecondary
+                              }
+                            />
+                            <Text
+                              style={[
+                                styles.serviceCardMetaText,
+                                selectedService === service._id &&
+                                  styles.serviceCardMetaTextActive,
+                              ]}
+                            >
+                              {service.durationMinutes} min
+                            </Text>
+                          </View>
+                          <View style={styles.serviceCardMetaItem}>
+                            <Ionicons
+                              name="cash-outline"
+                              size={16}
+                              color={
+                                selectedService === service._id
+                                  ? theme.colors.primary
+                                  : theme.colors.textSecondary
+                              }
+                            />
+                            <Text
+                              style={[
+                                styles.serviceCardMetaText,
+                                selectedService === service._id &&
+                                  styles.serviceCardMetaTextActive,
+                              ]}
+                            >
+                              ${service.price}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {/* Service Location */}
+                        <View style={styles.serviceCardLocation}>
+                          <MapPin
+                            size={14}
+                            color={
+                              selectedService === service._id
+                                ? theme.colors.primary
+                                : theme.colors.textSecondary
+                            }
+                          />
+                          <Text
+                            style={[
+                              styles.serviceCardLocationText,
+                              selectedService === service._id &&
+                                styles.serviceCardLocationTextActive,
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {service.address}
+                          </Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                )}
+              </View>
+            )}
+            {errors.service && (
+              <Text style={styles.errorText}>{errors.service}</Text>
+            )}
+            {errors.pets && <Text style={styles.errorText}>{errors.pets}</Text>}
           </Card>
 
           {/* Date & Time */}
@@ -220,25 +417,61 @@ export default function BookAppointmentScreen() {
             <View style={styles.datetimeRow}>
               <View style={styles.datetimeInput}>
                 <Calendar size={20} color={theme.colors.primary} />
-                <Input
-                  placeholder="Select date"
-                  value={date}
-                  onChangeText={setDate}
-                  error={errors.date}
-                  style={styles.datetimeField}
-                />
+                <TouchableOpacity
+                  style={[styles.dateInput, errors.date && styles.inputError]}
+                  onPress={() => setShowDatePicker(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.dateInputText,
+                      !selectedDateTime && styles.dateInputPlaceholder,
+                    ]}
+                  >
+                    {selectedDateTime
+                      ? formatDate(selectedDateTime)
+                      : "Select date"}
+                  </Text>
+                </TouchableOpacity>
               </View>
               <View style={styles.datetimeInput}>
                 <Clock size={20} color={theme.colors.primary} />
-                <Input
-                  placeholder="Select time"
-                  value={time}
-                  onChangeText={setTime}
-                  error={errors.time}
-                  style={styles.datetimeField}
-                />
+                <TouchableOpacity
+                  style={[styles.dateInput, errors.date && styles.inputError]}
+                  onPress={() => setShowTimePicker(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.dateInputText,
+                      !selectedDateTime && styles.dateInputPlaceholder,
+                    ]}
+                  >
+                    {selectedDateTime
+                      ? formatTime(selectedDateTime)
+                      : "Select time"}
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
+            {errors.date && <Text style={styles.errorText}>{errors.date}</Text>}
+            {showDatePicker && (
+              <DateTimePicker
+                value={selectedDateTime || new Date()}
+                mode="date"
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                minimumDate={new Date()}
+                onChange={handleDateChange}
+              />
+            )}
+            {showTimePicker && (
+              <DateTimePicker
+                value={selectedDateTime || new Date()}
+                mode="time"
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                onChange={handleTimeChange}
+              />
+            )}
           </Card>
 
           {/* Notes */}
@@ -255,11 +488,13 @@ export default function BookAppointmentScreen() {
           </Card>
 
           <Button
-            title="Book Appointment"
+            title={booking ? "Booking..." : "Book Appointment"}
             onPress={handleBook}
             size="large"
+            disabled={booking}
             style={styles.bookButton}
           />
+          {errors.form && <Text style={styles.errorText}>{errors.form}</Text>}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -400,5 +635,169 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.md,
     marginBottom: theme.spacing.xl,
   },
+  loadingContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: theme.spacing.xl,
+  },
+  loadingText: {
+    ...theme.typography.body,
+    color: theme.colors.textSecondary,
+    marginTop: theme.spacing.md,
+  },
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: theme.spacing.xl,
+  },
+  emptyText: {
+    ...theme.typography.h3,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
+  },
+  emptySubtext: {
+    ...theme.typography.body,
+    color: theme.colors.textSecondary,
+    textAlign: "center",
+  },
+  serviceDescription: {
+    ...theme.typography.bodySmall,
+    color: theme.colors.textSecondary,
+    marginTop: theme.spacing.xs,
+    marginBottom: theme.spacing.sm,
+  },
+  serviceDescriptionActive: {
+    color: theme.colors.primary,
+  },
+  serviceMeta: {
+    flexDirection: "row",
+    gap: theme.spacing.md,
+    marginTop: theme.spacing.xs,
+  },
+  metaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.xs,
+  },
+  metaText: {
+    ...theme.typography.bodySmall,
+    color: theme.colors.textSecondary,
+  },
+  dateInput: {
+    ...theme.typography.body,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.md,
+    color: theme.colors.text,
+    flex: 1,
+  },
+  dateInputText: {
+    color: theme.colors.text,
+  },
+  dateInputPlaceholder: {
+    color: theme.colors.textLight,
+  },
+  inputError: {
+    borderColor: theme.colors.error,
+  },
+  serviceCard: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+    marginBottom: theme.spacing.sm,
+    padding: theme.spacing.md,
+  },
+  serviceCardActive: {
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primary + "08",
+  },
+  serviceCardContent: {
+    flex: 1,
+  },
+  serviceCardHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: theme.spacing.sm,
+  },
+  serviceIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.background,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: theme.spacing.md,
+  },
+  serviceCardInfo: {
+    flex: 1,
+  },
+  serviceCardName: {
+    ...theme.typography.h3,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+  },
+  serviceCardNameActive: {
+    color: theme.colors.primary,
+  },
+  serviceCardCategory: {
+    alignSelf: "flex-start",
+    backgroundColor: theme.colors.primary + "15",
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+    borderRadius: theme.borderRadius.sm,
+  },
+  serviceCardCategoryText: {
+    ...theme.typography.caption,
+    color: theme.colors.primary,
+    fontWeight: "600",
+  },
+  serviceCardCategoryTextActive: {
+    color: theme.colors.primary,
+  },
+  selectionIndicator: {
+    marginLeft: theme.spacing.sm,
+  },
+  serviceCardDescription: {
+    ...theme.typography.bodySmall,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.md,
+    lineHeight: 20,
+  },
+  serviceCardDescriptionActive: {
+    color: theme.colors.text,
+  },
+  serviceCardMeta: {
+    flexDirection: "row",
+    gap: theme.spacing.lg,
+    marginBottom: theme.spacing.md,
+  },
+  serviceCardMetaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.xs,
+  },
+  serviceCardMetaText: {
+    ...theme.typography.bodySmall,
+    color: theme.colors.textSecondary,
+  },
+  serviceCardMetaTextActive: {
+    color: theme.colors.primary,
+  },
+  serviceCardLocation: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.xs,
+  },
+  serviceCardLocationText: {
+    ...theme.typography.bodySmall,
+    color: theme.colors.textSecondary,
+    flex: 1,
+  },
+  serviceCardLocationTextActive: {
+    color: theme.colors.primary,
+  },
 });
-

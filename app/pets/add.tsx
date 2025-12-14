@@ -17,6 +17,10 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { petService } from "@/services/petService";
+import DateTimePicker, {
+  DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 
 const speciesOptions = [
   { id: "dog", name: "Dog", Icon: Dog },
@@ -33,8 +37,11 @@ export default function AddPetScreen() {
   const [breed, setBreed] = useState("");
   const [gender, setGender] = useState("");
   const [birthdate, setBirthdate] = useState("");
+  const [birthdateDate, setBirthdateDate] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [allergies, setAllergies] = useState("");
   const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const validate = () => {
@@ -43,15 +50,61 @@ export default function AddPetScreen() {
     if (!species) newErrors.species = "Species is required";
     if (!breed.trim()) newErrors.breed = "Breed is required";
     if (!gender) newErrors.gender = "Gender is required";
-    if (!birthdate.trim()) newErrors.birthdate = "Birthdate is required";
+    if (!birthdateDate) newErrors.birthdate = "Birthdate is required";
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSave = () => {
-    if (validate()) {
-      // In real app, save to backend
+  const handleBirthdateChange = (
+    _event: DateTimePickerEvent,
+    selectedDate?: Date
+  ) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      const normalizedDate = new Date(
+        selectedDate.getFullYear(),
+        selectedDate.getMonth(),
+        selectedDate.getDate()
+      );
+      setBirthdateDate(normalizedDate);
+      setBirthdate(normalizedDate.toISOString().split("T")[0]);
+      setErrors((prev) => ({ ...prev, birthdate: "" }));
+    }
+  };
+
+  const handleSave = async () => {
+    if (!validate()) return;
+
+    const ageYears = birthdateDate
+      ? Math.max(
+          0,
+          Math.floor(
+            (Date.now() - birthdateDate.getTime()) /
+              (1000 * 60 * 60 * 24 * 365.25)
+          )
+        )
+      : 0;
+
+    try {
+      setSaving(true);
+      await petService.createPet({
+        name,
+        species,
+        breed,
+        gender,
+        age: ageYears,
+        birthdate: birthdate,
+        // TODO: hook up optional photo/allergies/notes when backend supports them
+      });
       router.back();
+    } catch (error) {
+      console.error("Error creating pet:", error);
+      setErrors((prev) => ({
+        ...prev,
+        form: "Unable to save pet right now. Please try again.",
+      }));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -104,13 +157,43 @@ export default function AddPetScreen() {
               onChangeText={setBreed}
               error={errors.breed}
             />
-            <Input
-              label="Birthdate *"
-              placeholder="YYYY-MM-DD"
-              value={birthdate}
-              onChangeText={setBirthdate}
-              error={errors.birthdate}
-            />
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Birthdate *</Text>
+              <TouchableOpacity
+                style={[
+                  styles.dateInput,
+                  errors.birthdate && styles.inputError,
+                ]}
+                onPress={() => setShowDatePicker(true)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.dateInputText,
+                    !birthdate && styles.dateInputPlaceholder,
+                  ]}
+                >
+                  {birthdate || "YYYY-MM-DD"}
+                </Text>
+                <Ionicons
+                  name="calendar-outline"
+                  size={20}
+                  color={theme.colors.textSecondary}
+                />
+              </TouchableOpacity>
+              {errors.birthdate && (
+                <Text style={styles.errorText}>{errors.birthdate}</Text>
+              )}
+            </View>
+            {showDatePicker && (
+              <DateTimePicker
+                value={birthdateDate || new Date()}
+                mode="date"
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                maximumDate={new Date()}
+                onChange={handleBirthdateChange}
+              />
+            )}
           </Card>
 
           {/* Species Selection */}
@@ -236,8 +319,10 @@ export default function AddPetScreen() {
             title="Save Pet Profile"
             onPress={handleSave}
             size="large"
+            disabled={saving}
             style={styles.saveButton}
           />
+          {errors.form && <Text style={styles.errorText}>{errors.form}</Text>}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -370,6 +455,9 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.sm,
     fontWeight: "500",
   },
+  inputError: {
+    borderColor: theme.colors.error,
+  },
   textArea: {
     ...theme.typography.body,
     backgroundColor: theme.colors.surface,
@@ -386,6 +474,25 @@ const styles = StyleSheet.create({
     ...theme.typography.caption,
     color: theme.colors.error,
     marginTop: theme.spacing.xs,
+  },
+  dateInput: {
+    ...theme.typography.body,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.md,
+    color: theme.colors.text,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  dateInputText: {
+    color: theme.colors.text,
+  },
+  dateInputPlaceholder: {
+    color: theme.colors.textLight,
   },
   saveButton: {
     marginTop: theme.spacing.md,

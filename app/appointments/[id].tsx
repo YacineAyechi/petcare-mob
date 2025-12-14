@@ -2,7 +2,7 @@ import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import { theme } from "@/constants/theme";
 import { Ionicons } from "@expo/vector-icons";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import {
   Calendar,
   Clock,
@@ -10,69 +10,18 @@ import {
   Phone,
   Stethoscope,
 } from "lucide-react-native";
-import React from "react";
+import React, { useState, useCallback } from "react";
 import {
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { appointmentService, Appointment } from "@/services/appointmentService";
 
-// Mock data - in real app, fetch by ID
-const appointments = [
-  {
-    id: "1",
-    petName: "Max",
-    petBreed: "Golden Retriever",
-    date: "2024-01-15",
-    time: "10:00 AM",
-    clinic: "VetCare Clinic",
-    address: "123 Main St, City",
-    phone: "+1 234-567-8900",
-    type: "Vaccination",
-    status: "accepted",
-    notes: "Annual vaccination check-up",
-    veterinarian: "Dr. Sarah Johnson",
-    vetDecision: "accepted",
-    vetNotes: "Appointment confirmed. Please arrive 10 minutes early.",
-  },
-  {
-    id: "2",
-    petName: "Luna",
-    petBreed: "Persian Cat",
-    date: "2024-01-18",
-    time: "2:30 PM",
-    clinic: "Animal Hospital",
-    address: "456 Oak Ave, City",
-    phone: "+1 234-567-8901",
-    type: "Check-up",
-    status: "pending",
-    notes: "Regular health check",
-    veterinarian: "Dr. Michael Chen",
-    vetDecision: "pending",
-    vetNotes: "",
-  },
-  {
-    id: "3",
-    petName: "Charlie",
-    petBreed: "Beagle",
-    date: "2024-01-20",
-    time: "11:00 AM",
-    clinic: "Pet Wellness Center",
-    address: "789 Pine Rd, City",
-    phone: "+1 234-567-8902",
-    type: "Grooming",
-    status: "rescheduled",
-    notes: "Full grooming service",
-    veterinarian: "Dr. Emily Davis",
-    vetDecision: "rescheduled",
-    vetNotes: "Rescheduled to next week due to availability.",
-    newDate: "2024-01-27",
-    newTime: "11:00 AM",
-  },
-];
 
 const statusColors = {
   confirmed: theme.colors.success,
@@ -85,9 +34,52 @@ const statusColors = {
 
 export default function AppointmentDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const appointment = appointments.find((apt) => apt.id === id);
+  const [appointment, setAppointment] = useState<Appointment | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  if (!appointment) {
+  const loadAppointmentData = useCallback(async () => {
+    if (!id) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const appointmentData = await appointmentService.getAppointmentById(id);
+      setAppointment(appointmentData);
+    } catch (err) {
+      console.error("Error loading appointment data:", err);
+      setError("Failed to load appointment information");
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadAppointmentData();
+    }, [loadAppointmentData])
+  );
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={styles.title}>Appointment Details</Text>
+          <View style={styles.placeholder} />
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={styles.loadingText}>Loading appointment details...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error || !appointment) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
         <View style={styles.header}>
@@ -136,56 +128,10 @@ export default function AppointmentDetailsScreen() {
             ]}
           >
             <Text style={[styles.statusText, { color: statusColor }]}>
-              {appointment.vetDecision
-                ? appointment.vetDecision.toUpperCase()
-                : appointment.status.toUpperCase()}
+              {appointment.status.toUpperCase()}
             </Text>
           </View>
-          {appointment.vetDecision === "rescheduled" && appointment.newDate && (
-            <Text style={styles.rescheduledText}>
-              New Date: {appointment.newDate} at {appointment.newTime}
-            </Text>
-          )}
         </View>
-
-        {/* Veterinarian Decision Section */}
-        {appointment.vetDecision && appointment.vetDecision !== "pending" && (
-          <Card style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Ionicons
-                name={
-                  appointment.vetDecision === "accepted"
-                    ? "checkmark-circle"
-                    : appointment.vetDecision === "rejected"
-                    ? "close-circle"
-                    : "time-outline"
-                }
-                size={20}
-                color={
-                  appointment.vetDecision === "accepted"
-                    ? theme.colors.success
-                    : appointment.vetDecision === "rejected"
-                    ? theme.colors.error
-                    : theme.colors.info
-                }
-              />
-              <Text style={styles.sectionTitle}>Veterinarian Decision</Text>
-            </View>
-            <Text style={styles.decisionText}>
-              Status:{" "}
-              <Text style={styles.decisionStatus}>
-                {appointment.vetDecision.charAt(0).toUpperCase() +
-                  appointment.vetDecision.slice(1)}
-              </Text>
-            </Text>
-            {appointment.vetNotes && (
-              <View style={styles.vetNotesContainer}>
-                <Text style={styles.vetNotesLabel}>Notes from Veterinarian:</Text>
-                <Text style={styles.vetNotesText}>{appointment.vetNotes}</Text>
-              </View>
-            )}
-          </Card>
-        )}
 
         {/* Pet Information */}
         <Card style={styles.section}>
@@ -195,11 +141,21 @@ export default function AppointmentDetailsScreen() {
           </View>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Pet Name</Text>
-            <Text style={styles.infoValue}>{appointment.petName}</Text>
+            <Text style={styles.infoValue}>
+              {typeof appointment.petId === 'object' ? appointment.petId.name : appointment.petId}
+            </Text>
           </View>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Breed</Text>
-            <Text style={styles.infoValue}>{appointment.petBreed}</Text>
+            <Text style={styles.infoValue}>
+              {typeof appointment.petId === 'object' ? appointment.petId.breed : 'Unknown'}
+            </Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Species</Text>
+            <Text style={styles.infoValue}>
+              {typeof appointment.petId === 'object' ? appointment.petId.species : 'Unknown'}
+            </Text>
           </View>
         </Card>
 
@@ -215,7 +171,9 @@ export default function AppointmentDetailsScreen() {
             </View>
             <View style={styles.detailContent}>
               <Text style={styles.detailLabel}>Date</Text>
-              <Text style={styles.detailValue}>{appointment.date}</Text>
+              <Text style={styles.detailValue}>
+                {new Date(appointment.dateTime).toLocaleDateString()}
+              </Text>
             </View>
           </View>
           <View style={styles.detailItem}>
@@ -224,7 +182,12 @@ export default function AppointmentDetailsScreen() {
             </View>
             <View style={styles.detailContent}>
               <Text style={styles.detailLabel}>Time</Text>
-              <Text style={styles.detailValue}>{appointment.time}</Text>
+              <Text style={styles.detailValue}>
+                {new Date(appointment.dateTime).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </Text>
             </View>
           </View>
           <View style={styles.detailItem}>
@@ -233,24 +196,28 @@ export default function AppointmentDetailsScreen() {
             </View>
             <View style={styles.detailContent}>
               <Text style={styles.detailLabel}>Type</Text>
-              <Text style={styles.detailValue}>{appointment.type}</Text>
+              <Text style={styles.detailValue}>{appointment.appointmentType}</Text>
             </View>
           </View>
-          <View style={styles.detailItem}>
-            <View style={styles.detailIcon}>
-              <Ionicons
-                name="person-outline"
-                size={18}
-                color={theme.colors.textSecondary}
-              />
+          {appointment.veterinarianId && (
+            <View style={styles.detailItem}>
+              <View style={styles.detailIcon}>
+                <Ionicons
+                  name="person-outline"
+                  size={18}
+                  color={theme.colors.textSecondary}
+                />
+              </View>
+              <View style={styles.detailContent}>
+                <Text style={styles.detailLabel}>Veterinarian</Text>
+                <Text style={styles.detailValue}>
+                  {typeof appointment.veterinarianId === 'object'
+                    ? appointment.veterinarianId.fullName
+                    : appointment.veterinarianId}
+                </Text>
+              </View>
             </View>
-            <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Veterinarian</Text>
-              <Text style={styles.detailValue}>
-                {appointment.veterinarian}
-              </Text>
-            </View>
-          </View>
+          )}
         </Card>
 
         {/* Clinic Information */}
@@ -269,7 +236,7 @@ export default function AppointmentDetailsScreen() {
             </View>
             <View style={styles.detailContent}>
               <Text style={styles.detailLabel}>Clinic Name</Text>
-              <Text style={styles.detailValue}>{appointment.clinic}</Text>
+              <Text style={styles.detailValue}>{appointment.clinicName}</Text>
             </View>
           </View>
           <View style={styles.detailItem}>
@@ -278,16 +245,7 @@ export default function AppointmentDetailsScreen() {
             </View>
             <View style={styles.detailContent}>
               <Text style={styles.detailLabel}>Address</Text>
-              <Text style={styles.detailValue}>{appointment.address}</Text>
-            </View>
-          </View>
-          <View style={styles.detailItem}>
-            <View style={styles.detailIcon}>
-              <Phone size={18} color={theme.colors.textSecondary} />
-            </View>
-            <View style={styles.detailContent}>
-              <Text style={styles.detailLabel}>Phone</Text>
-              <Text style={styles.detailValue}>{appointment.phone}</Text>
+              <Text style={styles.detailValue}>{appointment.clinicAddress}</Text>
             </View>
           </View>
         </Card>
@@ -312,7 +270,10 @@ export default function AppointmentDetailsScreen() {
           {appointment.status === "pending" && (
             <Button
               title="Cancel Appointment"
-              onPress={() => {}}
+              onPress={() => {
+                // TODO: Implement cancel appointment functionality
+                // appointmentService.cancelAppointment(appointment._id)
+              }}
               variant="outline"
               size="large"
               style={styles.actionButton}
@@ -320,18 +281,16 @@ export default function AppointmentDetailsScreen() {
           )}
           <Button
             title="Reschedule"
-            onPress={() => router.push(`/appointments/book`)}
+            onPress={() => router.push({
+              pathname: "/appointments/book",
+              params: {
+                petId: typeof appointment.petId === 'object' ? appointment.petId._id : appointment.petId
+              }
+            } as any)}
             variant="outline"
             size="large"
             style={styles.actionButton}
           />
-          <TouchableOpacity
-            style={styles.callButton}
-            onPress={() => {}}
-          >
-            <Ionicons name="call" size={20} color={theme.colors.white} />
-            <Text style={styles.callButtonText}>Call Clinic</Text>
-          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -477,6 +436,17 @@ const styles = StyleSheet.create({
   },
   backButton: {
     minWidth: 200,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: theme.spacing.xl,
+  },
+  loadingText: {
+    ...theme.typography.body,
+    color: theme.colors.textSecondary,
+    marginTop: theme.spacing.md,
   },
   rescheduledText: {
     ...theme.typography.bodySmall,

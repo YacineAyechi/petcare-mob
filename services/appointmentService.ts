@@ -27,7 +27,7 @@ export interface Appointment {
 
 export interface CreateAppointmentData {
   petId: string;
-  serviceId: string;
+  serviceId?: string;
   clinicName?: string;
   clinicAddress?: string;
   appointmentType: string;

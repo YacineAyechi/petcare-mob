@@ -1,35 +1,14 @@
-// API Configuration
-// For development, use your local IP address or localhost
-// For Android emulator, use 10.0.2.2 instead of localhost
-// For iOS simulator, use localhost
-// For physical device, use your computer's IP address
+// API configuration driven by environment variables.
+// Set EXPO_PUBLIC_API_BASE_URL in your .env file (Expo reads EXPO_PUBLIC_*).
+// Fallback to API_BASE_URL for non-Expo environments.
+export const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_BASE_URL || process.env.API_BASE_URL || "";
 
-import { Platform } from "react-native";
-
-// Get the base URL based on the platform
-const getBaseURL = () => {
-  // You can set this to your backend URL
-  // For development:
-  // - Android Emulator: 'http://10.0.2.2:5000'
-  // - iOS Simulator: 'http://localhost:5000'
-  // - Physical Device: 'http://YOUR_IP_ADDRESS:5000'
-
-  if (__DEV__) {
-    // Development mode
-    if (Platform.OS === "android") {
-      // For Android emulator
-      return "https://petcare-backend-r4j9.onrender.com";
-    } else {
-      // For iOS simulator or web
-      return "https://petcare-backend-r4j9.onrender.com";
-    }
-  } else {
-    // Production mode - replace with your production API URL
-    return "https://petcare-backend-r4j9.onrender.com";
-  }
-};
-
-export const API_BASE_URL = getBaseURL();
+if (!API_BASE_URL) {
+  console.warn(
+    "[API] Base URL is not set. Define EXPO_PUBLIC_API_BASE_URL in your .env."
+  );
+}
 
 export const API_ENDPOINTS = {
   // Auth endpoints

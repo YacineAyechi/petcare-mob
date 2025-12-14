@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { serviceService, Service } from "@/services/serviceService";
+import { useAuth } from "@/contexts/AuthContext";
 
 const serviceTypes = [
   { id: "all", name: "All", icon: "grid" },
@@ -25,6 +26,7 @@ const serviceTypes = [
 ];
 
 export default function ServicesScreen() {
+  const { user } = useAuth();
   const [selectedType, setSelectedType] = useState("all");
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,9 +58,23 @@ export default function ServicesScreen() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.header}>
         <Text style={styles.title}>Veterinary Services</Text>
-        <TouchableOpacity>
-          <Ionicons name="search" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity>
+            <Ionicons name="search" size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          {user?.role === "veterinarian" && (
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => router.push("/services/add" as any)}
+            >
+              <Ionicons
+                name="add-circle"
+                size={28}
+                color={theme.colors.primary}
+              />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Service Type Filters */}
@@ -132,7 +148,7 @@ export default function ServicesScreen() {
                             color={theme.colors.textSecondary}
                           />
                           <Text style={styles.metaText}>
-                            {service.duration} min
+                            {service.durationMinutes} min
                           </Text>
                         </View>
                         <View style={styles.metaItem}>
@@ -196,6 +212,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.md,
     paddingTop: theme.spacing.md,
     paddingBottom: theme.spacing.sm,
+  },
+  headerActions: {
+    flexDirection: "row",
+    gap: theme.spacing.sm,
+  },
+  addButton: {
+    padding: theme.spacing.xs,
   },
   title: {
     ...theme.typography.h1,

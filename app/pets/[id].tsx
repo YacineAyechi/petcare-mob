@@ -2,9 +2,9 @@ import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import { theme } from "@/constants/theme";
 import { Ionicons } from "@expo/vector-icons";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Calendar, Cat, Dog, Shield, Stethoscope } from "lucide-react-native";
-import React from "react";
+import React, { useState, useCallback } from "react";
 import {
   Image,
   ScrollView,
@@ -12,115 +12,74 @@ import {
   Text,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { petService, Pet } from "@/services/petService";
+import { vaccinationService } from "@/services/vaccinationService";
+import { medicalHistoryService } from "@/services/medicalHistoryService";
 
-// Mock data - in real app, fetch by ID
-const pets = [
-  {
-    id: "1",
-    name: "Max",
-    breed: "Golden Retriever",
-    species: "Dog",
-    age: 3,
-    birthdate: "2021-03-15",
-    gender: "Male",
-    photo: null,
-    Icon: Dog,
-    medicalHistory: [
-      {
-        id: "1",
-        type: "Vaccination",
-        title: "Rabies Vaccine",
-        date: "2023-12-01",
-        description: "Annual rabies vaccination",
-      },
-      {
-        id: "2",
-        type: "Check-up",
-        title: "Annual Check-up",
-        date: "2023-10-15",
-        description: "Regular health examination",
-      },
-      {
-        id: "3",
-        type: "Treatment",
-        title: "Dental Cleaning",
-        date: "2023-08-20",
-        description: "Professional dental cleaning",
-      },
-    ],
-    vaccinations: [
-      {
-        id: "1",
-        name: "Rabies",
-        date: "2023-12-01",
-        nextDue: "2024-12-01",
-        completed: true,
-      },
-      {
-        id: "2",
-        name: "DHPP",
-        date: "2023-11-15",
-        nextDue: "2024-11-15",
-        completed: true,
-      },
-      {
-        id: "3",
-        name: "Bordetella",
-        date: "2023-10-01",
-        nextDue: "2024-01-20",
-        completed: false,
-      },
-    ],
-    allergies: ["Pollen", "Certain flea treatments"],
-    notes: "Max is a friendly and active dog. He loves playing fetch and going for walks.",
-  },
-  {
-    id: "2",
-    name: "Luna",
-    breed: "Persian Cat",
-    species: "Cat",
-    age: 2,
-    birthdate: "2022-05-10",
-    gender: "Female",
-    photo: null,
-    Icon: Cat,
-    medicalHistory: [
-      {
-        id: "1",
-        type: "Vaccination",
-        title: "FVRCP Vaccine",
-        date: "2023-11-20",
-        description: "Annual FVRCP vaccination",
-      },
-    ],
-    vaccinations: [
-      {
-        id: "1",
-        name: "FVRCP",
-        date: "2023-11-20",
-        nextDue: "2024-11-20",
-        completed: true,
-      },
-      {
-        id: "2",
-        name: "Rabies",
-        date: "2023-11-20",
-        nextDue: "2024-01-25",
-        completed: false,
-      },
-    ],
-    allergies: [],
-    notes: "Luna is a calm and friendly cat.",
-  },
-];
 
 export default function PetProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const pet = pets.find((p) => p.id === id);
+  const [pet, setPet] = useState<Pet | null>(null);
+  const [vaccinations, setVaccinations] = useState<any[]>([]);
+  const [medicalHistory, setMedicalHistory] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  if (!pet) {
+  const loadPetData = useCallback(async () => {
+    if (!id) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Fetch pet data
+      const petData = await petService.getPetById(id);
+      setPet(petData);
+
+      // Fetch vaccinations and medical history in parallel
+      const [vaccinationsData, medicalHistoryData] = await Promise.all([
+        vaccinationService.getPetVaccinations(id),
+        medicalHistoryService.getPetMedicalHistory(id)
+      ]);
+
+      setVaccinations(vaccinationsData);
+      setMedicalHistory(medicalHistoryData);
+    } catch (err) {
+      console.error("Error loading pet data:", err);
+      setError("Failed to load pet information");
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadPetData();
+    }, [loadPetData])
+  );
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={styles.title}>Pet Profile</Text>
+          <View style={styles.placeholder} />
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={styles.loadingText}>Loading pet information...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error || !pet) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
         <View style={styles.header}>
@@ -142,7 +101,11 @@ export default function PetProfileScreen() {
     );
   }
 
-  const PetIcon = pet.Icon;
+  const getPetIcon = (species: string) => {
+    return species.toLowerCase().includes("cat") ? Cat : Dog;
+  };
+
+  const PetIcon = getPetIcon(pet.species);
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -152,7 +115,7 @@ export default function PetProfileScreen() {
         </TouchableOpacity>
         <Text style={styles.title}>{pet.name}</Text>
         <TouchableOpacity
-          onPress={() => router.push(`/pets/edit/${pet.id}` as any)}
+          onPress={() => router.push(`/pets/edit/${pet._id}` as any)}
         >
           <Ionicons name="create-outline" size={24} color={theme.colors.text} />
         </TouchableOpacity>
@@ -207,7 +170,7 @@ export default function PetProfileScreen() {
             onPress={() =>
               router.push({
                 pathname: "/appointments/book",
-                params: { petId: pet.id },
+                params: { petId: pet._id },
               } as any)
             }
           >
@@ -233,18 +196,20 @@ export default function PetProfileScreen() {
             <Stethoscope size={20} color={theme.colors.primary} />
             <Text style={styles.sectionTitle}>Medical Timeline</Text>
           </View>
-          {pet.medicalHistory.length > 0 ? (
+          {medicalHistory.length > 0 ? (
             <View style={styles.timeline}>
-              {pet.medicalHistory.map((event, index) => (
-                <View key={event.id} style={styles.timelineItem}>
+              {medicalHistory.map((event, index) => (
+                <View key={event._id} style={styles.timelineItem}>
                   <View style={styles.timelineDot} />
-                  {index < pet.medicalHistory.length - 1 && (
+                  {index < medicalHistory.length - 1 && (
                     <View style={styles.timelineLine} />
                   )}
                   <View style={styles.timelineContent}>
                     <View style={styles.timelineHeader}>
                       <Text style={styles.timelineTitle}>{event.title}</Text>
-                      <Text style={styles.timelineDate}>{event.date}</Text>
+                      <Text style={styles.timelineDate}>
+                        {new Date(event.date).toLocaleDateString()}
+                      </Text>
                     </View>
                     <View style={styles.timelineType}>
                       <Text style={styles.timelineTypeText}>{event.type}</Text>
@@ -267,17 +232,17 @@ export default function PetProfileScreen() {
             <Shield size={20} color={theme.colors.secondary} />
             <Text style={styles.sectionTitle}>Vaccination Records</Text>
           </View>
-          {pet.vaccinations.length > 0 ? (
+          {vaccinations.length > 0 ? (
             <View style={styles.vaccinationList}>
-              {pet.vaccinations.map((vaccine) => (
-                <View key={vaccine.id} style={styles.vaccinationItem}>
+              {vaccinations.map((vaccine) => (
+                <View key={vaccine._id} style={styles.vaccinationItem}>
                   <View style={styles.vaccinationHeader}>
                     <Text style={styles.vaccinationName}>{vaccine.name}</Text>
                     <View
                       style={[
                         styles.vaccinationStatus,
                         {
-                          backgroundColor: vaccine.completed
+                          backgroundColor: vaccine.status === "completed"
                             ? theme.colors.success + "20"
                             : theme.colors.warning + "20",
                         },
@@ -287,32 +252,38 @@ export default function PetProfileScreen() {
                         style={[
                           styles.vaccinationStatusText,
                           {
-                            color: vaccine.completed
+                            color: vaccine.status === "completed"
                               ? theme.colors.success
                               : theme.colors.warning,
                           },
                         ]}
                       >
-                        {vaccine.completed ? "Completed" : "Due"}
+                        {vaccine.status === "completed" ? "Completed" : "Due"}
                       </Text>
                     </View>
                   </View>
                   <View style={styles.vaccinationDetails}>
-                    <View style={styles.vaccinationDetail}>
-                      <Text style={styles.vaccinationLabel}>Last Date:</Text>
-                      <Text style={styles.vaccinationValue}>{vaccine.date}</Text>
-                    </View>
-                    <View style={styles.vaccinationDetail}>
-                      <Text style={styles.vaccinationLabel}>Next Due:</Text>
-                      <Text
-                        style={[
-                          styles.vaccinationValue,
-                          !vaccine.completed && styles.vaccinationValueWarning,
-                        ]}
-                      >
-                        {vaccine.nextDue}
-                      </Text>
-                    </View>
+                    {vaccine.date && (
+                      <View style={styles.vaccinationDetail}>
+                        <Text style={styles.vaccinationLabel}>Last Date:</Text>
+                        <Text style={styles.vaccinationValue}>
+                          {new Date(vaccine.date).toLocaleDateString()}
+                        </Text>
+                      </View>
+                    )}
+                    {vaccine.nextDueDate && (
+                      <View style={styles.vaccinationDetail}>
+                        <Text style={styles.vaccinationLabel}>Next Due:</Text>
+                        <Text
+                          style={[
+                            styles.vaccinationValue,
+                            vaccine.status !== "completed" && styles.vaccinationValueWarning,
+                          ]}
+                        >
+                          {new Date(vaccine.nextDueDate).toLocaleDateString()}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 </View>
               ))}
@@ -329,47 +300,11 @@ export default function PetProfileScreen() {
           />
         </Card>
 
-        {/* Allergies */}
-        {pet.allergies.length > 0 && (
-          <Card style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Ionicons
-                name="warning-outline"
-                size={20}
-                color={theme.colors.warning}
-              />
-              <Text style={styles.sectionTitle}>Allergies</Text>
-            </View>
-            <View style={styles.allergiesList}>
-              {pet.allergies.map((allergy, index) => (
-                <View key={index} style={styles.allergyTag}>
-                  <Text style={styles.allergyText}>{allergy}</Text>
-                </View>
-              ))}
-            </View>
-          </Card>
-        )}
-
-        {/* Notes */}
-        {pet.notes && (
-          <Card style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Ionicons
-                name="document-text-outline"
-                size={20}
-                color={theme.colors.primary}
-              />
-              <Text style={styles.sectionTitle}>Notes</Text>
-            </View>
-            <Text style={styles.notesText}>{pet.notes}</Text>
-          </Card>
-        )}
-
         {/* Edit & Delete Actions */}
         <View style={styles.actionsContainer}>
           <Button
             title="Edit Pet Profile"
-            onPress={() => router.push(`/pets/edit/${pet.id}` as any)}
+            onPress={() => router.push(`/pets/edit/${pet._id}` as any)}
             variant="outline"
             size="large"
             style={styles.actionButton}
@@ -378,6 +313,7 @@ export default function PetProfileScreen() {
             style={styles.deleteButton}
             onPress={() => {
               // Handle delete confirmation
+              // TODO: Implement delete functionality with confirmation modal
             }}
           >
             <Ionicons name="trash-outline" size={20} color={theme.colors.error} />
