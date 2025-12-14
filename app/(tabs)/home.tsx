@@ -41,7 +41,7 @@ const formatTime = (dateString: string) => {
 };
 
 export default function HomeScreen() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [pets, setPets] = useState<Pet[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [vaccinations, setVaccinations] = useState<Vaccination[]>([]);
@@ -140,13 +140,9 @@ export default function HomeScreen() {
             </Text>
           </View>
           <View style={styles.headerButtons}>
-            
-            <TouchableOpacity
-              style={styles.headerButton}
-              onPress={() => router.push("/settings")}
-            >
+            <TouchableOpacity style={styles.headerButton} onPress={logout}>
               <Ionicons
-                name="settings-outline"
+                name="log-out-outline"
                 size={24}
                 color={theme.colors.text}
               />

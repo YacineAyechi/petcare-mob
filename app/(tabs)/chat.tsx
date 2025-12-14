@@ -1,5 +1,6 @@
 import Card from "@/components/ui/Card";
 import { theme } from "@/constants/theme";
+import { useAuth } from "@/contexts/AuthContext";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -23,6 +24,7 @@ interface Message {
 }
 
 export default function ChatScreen() {
+  const { logout } = useAuth();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
@@ -85,9 +87,9 @@ export default function ChatScreen() {
             <Text style={styles.headerSubtitle}>Always here to help</Text>
           </View>
         </View>
-        <TouchableOpacity>
+        <TouchableOpacity onPress={logout}>
           <Ionicons
-            name="settings-outline"
+            name="log-out-outline"
             size={24}
             color={theme.colors.text}
           />
