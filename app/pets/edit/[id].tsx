@@ -5,7 +5,7 @@ import { theme } from "@/constants/theme";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { Cat, Dog } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -17,20 +17,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-
-// Mock data - in real app, fetch by ID
-const pets = [
-  {
-    id: "1",
-    name: "Max",
-    breed: "Golden Retriever",
-    species: "dog",
-    birthdate: "2021-03-15",
-    gender: "Male",
-    allergies: "Pollen, Certain flea treatments",
-    notes: "Max is a friendly and active dog. He loves playing fetch and going for walks.",
-  },
-];
+import { petService, Pet } from "@/services/petService";
 
 const speciesOptions = [
   { id: "dog", name: "Dog", Icon: Dog },
@@ -41,18 +28,47 @@ const genderOptions = ["Male", "Female"];
 
 export default function EditPetScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const pet = pets.find((p) => p.id === id);
+  const [pet, setPet] = useState<Pet | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const [name, setName] = useState(pet?.name || "");
-  const [species, setSpecies] = useState(pet?.species || "");
-  const [breed, setBreed] = useState(pet?.breed || "");
-  const [gender, setGender] = useState(pet?.gender || "");
-  const [birthdate, setBirthdate] = useState(pet?.birthdate || "");
-  const [allergies, setAllergies] = useState(pet?.allergies || "");
-  const [notes, setNotes] = useState(pet?.notes || "");
+  const [name, setName] = useState("");
+  const [species, setSpecies] = useState("");
+  const [breed, setBreed] = useState("");
+  const [gender, setGender] = useState("");
+  const [weight, setWeight] = useState("");
+  const [color, setColor] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  if (!pet) {
+  useEffect(() => {
+    const loadPet = async () => {
+      if (!id) return;
+
+      try {
+        setLoading(true);
+        setError(null);
+        const petData = await petService.getPetById(id);
+        setPet(petData);
+
+        // Initialize form with pet data
+        setName(petData.name);
+        setSpecies(petData.species);
+        setBreed(petData.breed);
+        setGender(petData.gender);
+        setWeight(petData.weight?.toString() || "");
+        setColor(petData.color || "");
+      } catch (err) {
+        console.error("Error loading pet:", err);
+        setError("Failed to load pet information");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadPet();
+  }, [id]);
+
+  if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
         <View style={styles.header}>
@@ -63,7 +79,24 @@ export default function EditPetScreen() {
           <View style={styles.placeholder} />
         </View>
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>Pet not found</Text>
+          <Text style={styles.emptyText}>Loading pet information...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error || !pet) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={styles.title}>Edit Pet</Text>
+          <View style={styles.placeholder} />
+        </View>
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>{error || "Pet not found"}</Text>
           <Button
             title="Go Back"
             onPress={() => router.back()}
@@ -80,15 +113,34 @@ export default function EditPetScreen() {
     if (!species) newErrors.species = "Species is required";
     if (!breed.trim()) newErrors.breed = "Breed is required";
     if (!gender) newErrors.gender = "Gender is required";
-    if (!birthdate.trim()) newErrors.birthdate = "Birthdate is required";
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSave = () => {
-    if (validate()) {
-      // In real app, update in backend
-      router.back();
+  const handleSave = async () => {
+    if (validate() && pet) {
+      try {
+        const updateData: any = {
+          name,
+          species,
+          breed,
+          gender,
+        };
+
+        if (weight.trim()) {
+          updateData.weight = parseFloat(weight);
+        }
+
+        if (color.trim()) {
+          updateData.color = color;
+        }
+
+        await petService.updatePet(pet._id, updateData);
+        router.back();
+      } catch (err) {
+        console.error("Error updating pet:", err);
+        setError("Failed to update pet");
+      }
     }
   };
 
@@ -141,11 +193,17 @@ export default function EditPetScreen() {
               error={errors.breed}
             />
             <Input
-              label="Birthdate *"
-              placeholder="YYYY-MM-DD"
-              value={birthdate}
-              onChangeText={setBirthdate}
-              error={errors.birthdate}
+              label="Weight (kg)"
+              placeholder="Enter weight in kg"
+              value={weight}
+              onChangeText={setWeight}
+              keyboardType="numeric"
+            />
+            <Input
+              label="Color"
+              placeholder="Enter color"
+              value={color}
+              onChangeText={setColor}
             />
           </Card>
 
@@ -229,38 +287,6 @@ export default function EditPetScreen() {
             {errors.gender && (
               <Text style={styles.errorText}>{errors.gender}</Text>
             )}
-          </Card>
-
-          <Card style={styles.section}>
-            <Text style={styles.sectionTitle}>Medical Information</Text>
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Allergies</Text>
-              <TextInput
-                style={styles.textArea}
-                placeholder="List any known allergies (separated by commas)"
-                value={allergies}
-                onChangeText={setAllergies}
-                multiline
-                numberOfLines={3}
-                placeholderTextColor={theme.colors.textLight}
-              />
-            </View>
-          </Card>
-
-          <Card style={styles.section}>
-            <Text style={styles.sectionTitle}>Additional Notes</Text>
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Notes</Text>
-              <TextInput
-                style={styles.textArea}
-                placeholder="Any additional information about your pet..."
-                value={notes}
-                onChangeText={setNotes}
-                multiline
-                numberOfLines={4}
-                placeholderTextColor={theme.colors.textLight}
-              />
-            </View>
           </Card>
 
           <Button
@@ -437,5 +463,3 @@ const styles = StyleSheet.create({
     minWidth: 200,
   },
 });
-
-
