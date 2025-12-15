@@ -1,6 +1,7 @@
 import Card from "@/components/ui/Card";
 import { theme } from "@/constants/theme";
 import { useAuth } from "@/contexts/AuthContext";
+import { aiService } from "@/services/aiService";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -34,14 +35,15 @@ export default function ChatScreen() {
     },
   ]);
   const [inputText, setInputText] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     scrollViewRef.current?.scrollToEnd({ animated: true });
   }, [messages]);
 
-  const handleSend = () => {
-    if (!inputText.trim()) return;
+  const handleSend = async () => {
+    if (!inputText.trim() || isLoading) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -51,21 +53,34 @@ export default function ChatScreen() {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const currentInput = inputText;
     setInputText("");
+    setIsLoading(true);
 
-    // Simulate AI response
-    setTimeout(() => {
+    try {
+      const response = await aiService.chat(currentInput);
+
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
-        text:
-          "I understand your question about '" +
-          inputText +
-          "'. Let me help you with that. This is a simulated response. In the full implementation, this would connect to the OpenAI API to provide real pet care advice.",
+        text: response.reply,
         isUser: false,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, aiMessage]);
-    }, 1000);
+    } catch (error) {
+      console.error("AI chat error:", error);
+
+      // Add error message to chat
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: "Sorry, I'm having trouble connecting right now. Please try again later.",
+        isUser: false,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const quickQuestions = [
@@ -205,18 +220,26 @@ export default function ChatScreen() {
           <TouchableOpacity
             style={[
               styles.sendButton,
-              !inputText.trim() && styles.sendButtonDisabled,
+              (!inputText.trim() || isLoading) && styles.sendButtonDisabled,
             ]}
             onPress={handleSend}
-            disabled={!inputText.trim()}
+            disabled={!inputText.trim() || isLoading}
           >
-            <Ionicons
-              name="send"
-              size={20}
-              color={
-                inputText.trim() ? theme.colors.white : theme.colors.textLight
-              }
-            />
+            {isLoading ? (
+              <Ionicons
+                name="ellipsis-horizontal"
+                size={20}
+                color={theme.colors.textLight}
+              />
+            ) : (
+              <Ionicons
+                name="send"
+                size={20}
+                color={
+                  inputText.trim() ? theme.colors.white : theme.colors.textLight
+                }
+              />
+            )}
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

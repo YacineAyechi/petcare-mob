@@ -1,8 +1,17 @@
-# Welcome to your Expo app 👋
+# PetCare Mobile App 📱
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+This is an [Expo](https://expo.dev) React Native app for pet care management with AI-powered assistance.
 
-## Get started
+## Features
+
+- 🐾 Pet profile management
+- 💉 Vaccination tracking
+- 🏥 Medical history and medication scheduling
+- 📅 Appointment booking
+- 🤖 AI chat assistant for pet care advice
+- 👥 User authentication (Owner/Veterinarian roles)
+
+## Setup
 
 1. Install dependencies
 
@@ -10,7 +19,19 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npm install
    ```
 
-2. Start the app
+2. Configure API connection
+
+   Create a `.env` file in the root directory or set environment variables:
+
+   ```bash
+   # For local development
+   EXPO_PUBLIC_API_BASE_URL=http://localhost:5000
+
+   # For production
+   EXPO_PUBLIC_API_BASE_URL=https://your-api-domain.com
+   ```
+
+3. Start the app
 
    ```bash
    npx expo start
